@@ -101,6 +101,11 @@ app.get('/expeditions', (req, res) => {
   });
 });
 
+app.get('/favicon.ico', (req, res) => {
+  res.status(204).end(); 
+});
+
+
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
 });
