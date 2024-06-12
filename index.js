@@ -9,64 +9,99 @@ const port = process.env.PORT || 4000;
 app.use(cors());
 app.use(bodyParser.json());
 
-const db = mysql.createConnection({
-  host: process.env.MYSQL_ADDON_HOST,  
-  user: process.env.MYSQL_ADDON_USER,  
-  password: process.env.MYSQL_ADDON_PASSWORD,  
+const pool = mysql.createPool({
+  host: process.env.MYSQL_ADDON_HOST,
+  user: process.env.MYSQL_ADDON_USER,
+  password: process.env.MYSQL_ADDON_PASSWORD,
   database: process.env.MYSQL_ADDON_DB,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect(err => {
-  if (err) throw err;
-  console.log('MySQL Connected...');
-});
+const checkConnection = (req, res, next) => {
+  pool.getConnection((err, connection) => {
+    if (err) {
+      console.error('Error connecting to database:', err);
+      res.status(500).send('Error connecting to database');
+    } else {
+      req.connection = connection;
+      next();
+    }
+  });
+};
 
-app.post('/packages', (req, res) => {
+app.post('/packages', checkConnection, (req, res) => {
   const { nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status } = req.body;
   const query = `INSERT INTO paket (nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status) VALUES (?, ?, ?, ?, ?, ?)`;
-  db.query(query, [nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status], (err, result) => {
-    if (err) throw err;
-    res.send({ id: result.insertId });
+  req.connection.query(query, [nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status], (err, result) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error inserting package:', err);
+      res.status(500).send('Error inserting package');
+    } else {
+      res.send({ id: result.insertId });
+    }
   });
 });
 
-app.get('/packages', (req, res) => {
-  const query = `SELECT * FROM paket`;
-  db.query(query, (err, results) => {
-    if (err) throw err;
-    res.send(results);
+app.get('/packages', checkConnection, (req, res) => {
+  const query = `SELECT paket.*, ekspedisi.nama AS nama_ekspedisi FROM paket JOIN ekspedisi ON paket.ekspedisi_id = ekspedisi.id`;
+  req.connection.query(query, (err, results) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error fetching packages:', err);
+      res.status(500).send('Error fetching packages');
+    } else {
+      res.send(results);
+    }
   });
 });
 
-app.get('/packages/:id', (req, res) => {
+app.get('/packages/:id', checkConnection, (req, res) => {
   const { id } = req.params;
-  const query = `SELECT * FROM paket WHERE id = ?`;
-  db.query(query, [id], (err, result) => {
-    if (err) throw err;
-    res.send(result);
+  const query = `SELECT paket.*, ekspedisi.nama AS nama_ekspedisi FROM paket JOIN ekspedisi ON paket.ekspedisi_id = ekspedisi.id WHERE paket.id = ?`;
+  req.connection.query(query, [id], (err, result) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error fetching package:', err);
+      res.status(500).send('Error fetching package');
+    } else {
+      res.send(result);
+    }
   });
 });
 
-app.put('/packages/:id', (req, res) => {
+app.put('/packages/:id', checkConnection, (req, res) => {
   const { id } = req.params;
   const { nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status } = req.body;
   const query = `UPDATE paket SET nama_pengirim = ?, alamat_pengirim = ?, nama_penerima = ?, alamat_penerima = ?, ekspedisi_id = ?, status = ? WHERE id = ?`;
-  db.query(query, [nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status, id], (err, result) => {
-    if (err) throw err;
-    res.send(result);
+  req.connection.query(query, [nama_pengirim, alamat_pengirim, nama_penerima, alamat_penerima, ekspedisi_id, status, id], (err, result) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error updating package:', err);
+      res.status(500).send('Error updating package');
+    } else {
+      res.send(result);
+    }
   });
 });
 
-app.delete('/packages/:id', (req, res) => {
+app.delete('/packages/:id', checkConnection, (req, res) => {
   const { id } = req.params;
   const query = `DELETE FROM paket WHERE id = ?`;
-  db.query(query, [id], (err, result) => {
-    if (err) throw err;
-    res.send("Data deleted successfully");
+  req.connection.query(query, [id], (err, result) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error deleting package:', err);
+      res.status(500).send('Error deleting package');
+    } else {
+      res.send("Data deleted successfully");
+    }
   });
 });
 
-app.get('/reports', (req, res) => {
+app.get('/reports', checkConnection, (req, res) => {
   const { status, startDate, endDate } = req.query;
   let query = `SELECT * FROM paket WHERE 1=1`;
   const queryParams = [];
@@ -86,24 +121,33 @@ app.get('/reports', (req, res) => {
     queryParams.push(endDate);
   }
 
-  db.query(query, queryParams, (err, results) => {
-    if (err) throw err;
-    res.send(results);
+  req.connection.query(query, queryParams, (err, results) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error fetching reports:', err);
+      res.status(500).send('Error fetching reports');
+    } else {
+      res.send(results);
+    }
   });
 });
 
-app.get('/expeditions', (req, res) => {
+app.get('/expeditions', checkConnection, (req, res) => {
   const query = `SELECT * FROM ekspedisi`;
-  db.query(query, (err, results) => {
-    if (err) throw err;
-    res.send(results);
+  req.connection.query(query, (err, results) => {
+    req.connection.release();
+    if (err) {
+      console.error('Error fetching expeditions:', err);
+      res.status(500).send('Error fetching expeditions');
+    } else {
+      res.send(results);
+    }
   });
 });
 
 app.get('/favicon.ico', (req, res) => {
   res.status(204).end(); 
 });
-
 
 app.listen(port, () => {
   console.log(`Server running on port ${port}`);
